@@ -1,0 +1,81 @@
+# Generic home-services example — PLACEHOLDERS ONLY (not a real business).
+# Sample for local remodel / exterior trades. No MasterFix secrets.
+
+business_name: "Cascade Home Pros"
+voice: "friendly, professional, concise — helpful neighbor vibe"
+website: "https://example-home-pros.example"
+phone: "(555) 123-4567"
+email: "hello@example-home-pros.example"
+license_note: "Licensed & insured (sample — replace before production)"
+
+service_area:
+  - "Seattle"
+  - "Bellevue"
+  - "Redmond"
+  - "Kirkland"
+  - "Tacoma"
+  - "King County"
+  - "Pierce County"
+
+in_scope:
+  - "vinyl siding"
+  - "siding"
+  - "roofing"
+  - "roof"
+  - "gutters"
+  - "windows"
+  - "deck"
+  - "fence"
+  - "kitchen remodel"
+  - "bathroom remodel"
+  - "remodel"
+  - "drywall"
+  - "painting exterior"
+  - "contractor"
+
+out_of_scope:
+  - "lawn care"
+  - "landscaping only"
+  - "house cleaning"
+  - "moving company"
+  - "appliance repair"
+  - "pest control"
+
+skip_patterns:
+  - "looking for work"
+  - "looking for a job"
+  - "hiring myself out"
+  - "I'm a contractor looking"
+  - "I am a contractor"
+  - "available for work"
+  - "hourly"
+  - "$/hr"
+  - "per hour"
+  - "need crew"
+  - "need laborers"
+  - "subcontract"
+  - "W2"
+  - "seeking employment"
+
+comment_template: >
+  Hi! We're {business_name} — we handle {need} for homeowners in {service_area}.
+  Happy to chat about scope and a free estimate: {phone} or {website}. {cta}
+
+dm_template: >
+  Hi {author}, saw your post about {need}.
+  {business_name} is a local home-services crew ({license_note}).
+  Phone: {phone} | Web: {website}. {cta}
+
+max_outreach_per_run: 3
+schedule_hint: "every 5 minutes"
+strong_min_score: 4
+maybe_min_score: 2
+
+platforms:
+  - type: facebook
+    identity_name: "Cascade Home Pros (sample Page)"
+    sources:
+      - name: "Sample Local Homeowners"
+        url: "https://www.facebook.com/groups/example-homeowners"
+      - name: "Sample Remodel Recs"
+        url: "https://www.facebook.com/groups/example-remodel"

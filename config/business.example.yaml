@@ -1,0 +1,94 @@
+# =============================================================================
+# Social Lead Watcher — business config template (fully commented)
+# Copy to config/business.yaml and fill in placeholders.
+# NEVER commit real session cookies, passwords, or private customer data.
+# =============================================================================
+
+# Display name used in comments / DMs
+business_name: "Your Business Name"
+
+# Tone guidance for agents (not injected unless you put it in templates)
+voice: "friendly, professional, concise"
+
+# Public contact — placeholders only in examples
+website: "https://example.com"
+phone: "(555) 000-0000"
+email: "leads@example.com"
+
+# Optional license / bonding note for templates ({license_note})
+license_note: "Licensed & insured — replace with your license #"
+
+# Cities / regions that boost score when mentioned in a post
+service_area:
+  - "Seattle"
+  - "Bellevue"
+  - "King County"
+
+# Trades / services you WANT to respond to (substring match, case-insensitive)
+in_scope:
+  - "vinyl siding"
+  - "roofing"
+  - "kitchen remodel"
+  - "bathroom remodel"
+  - "deck"
+  - "windows"
+
+# If these appear WITHOUT an in_scope hit → skip
+out_of_scope:
+  - "landscaping only"
+  - "cleaning"
+  - "moving"
+
+# Always skip (contractor self-ads, looking-for-work, hourly hiring, etc.)
+skip_patterns:
+  - "looking for work"
+  - "hiring myself out"
+  - "I'm a contractor"
+  - "hourly"
+  - "$/hr"
+  - "per hour"
+  - "need crew"
+  - "subcontract"
+
+# Templates — placeholders: {business_name} {need} {website} {phone} {email}
+# {license_note} {author} {cta} {group} {service_area} {voice}
+comment_template: >
+  Hi! We're {business_name} — happy to help with {need}.
+  Reach us at {phone} or {website}. {cta}
+
+dm_template: >
+  Hi {author}, saw your post about {need}.
+  {business_name} can help. Phone: {phone} | {website}. {cta}
+
+# Cap outreach volume per run (strong + clear maybe only)
+max_outreach_per_run: 3
+
+# Hint for schedulers / agents (not enforced by the library itself)
+schedule_hint: "every 5 minutes"
+
+# Scoring thresholds (optional)
+strong_min_score: 4
+maybe_min_score: 2
+
+# Platforms to watch — Facebook is primary today; others are stubs/agent mode
+platforms:
+  - type: facebook
+    identity_name: "Your Business Page Name"
+    sources:
+      - name: "Example Homeowners Group"
+        url: "https://www.facebook.com/groups/example"
+  # - type: nextdoor
+  #   identity_name: "Your Nextdoor business"
+  #   sources:
+  #     - name: "Neighborhood feed"
+  #       url: "https://nextdoor.com/..."
+  # - type: craigslist
+  #   identity_name: ""
+  #   sources:
+  #     - name: "Seattle services wanted"
+  #       url: "https://seattle.craigslist.org/search/bbb"
+  # - type: reddit
+  #   identity_name: "u/yourbot"
+  #   sources:
+  #     - name: "r/Seattle"
+  #       url: "https://www.reddit.com/r/Seattle/new/"

@@ -1,67 +1,77 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, Text } from "react-native";
-import { Btn, Card, Input, Label, Screen, Sub, Title } from "@/components/ui";
-import { colors } from "@/lib/theme";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Btn, Card, Input, Label, Row, Screen, Sub, Title } from "@/components/ui";
+import { colors, space } from "@/lib/theme";
+import {
+  exportLocalFiles,
+  getGithubPat,
+  getGithubRepo,
+  saveConfigToGithub,
+  setGithubPat,
+  setGithubRepo,
+} from "@/lib/exportSync";
 import {
   connectPlatform,
+  getDashboard,
   getSession,
   resetDemoStore,
   saveOnboarding,
   setWatcherStatus,
 } from "@/lib/store";
-import type { OnboardingDraft, PlatformType, Tenant } from "@/lib/types";
+import type { OnboardingDraft, Tenant } from "@/lib/types";
+import type { ActivityRecord } from "@/lib/types";
 
 export default function Settings() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [draft, setDraft] = useState<OnboardingDraft | null>(null);
+  const [activity, setActivity] = useState<ActivityRecord[]>([]);
   const [msg, setMsg] = useState("");
+  const [pat, setPat] = useState("");
+  const [repo, setRepo] = useState("sahakmbs/social-lead-watcher");
+  const [editing, setEditing] = useState<"business" | "sync" | null>(null);
 
   useEffect(() => {
-    getSession().then((s) => {
+    (async () => {
+      const s = await getSession();
       if (!s) {
         router.replace("/login");
         return;
       }
       setTenant(s.tenant);
       setDraft(s.tenant.onboarding);
-    });
+      setPat(await getGithubPat());
+      setRepo(await getGithubRepo());
+      try {
+        const d = await getDashboard();
+        setActivity(d.activity);
+      } catch {
+        /* ignore */
+      }
+    })();
   }, []);
 
-  async function save() {
+  async function saveBusiness() {
     if (!draft) return;
     const t = await saveOnboarding(draft);
     setTenant(t);
     setDraft(t.onboarding);
+    setEditing(null);
     setMsg("Saved.");
   }
 
-  async function reconnect(p: PlatformType) {
-    await connectPlatform(p, draft?.business.businessName || p);
-    const s = await getSession();
-    if (s) {
-      setTenant(s.tenant);
-      setDraft(s.tenant.onboarding);
-    }
-    setMsg(`${p} reconnected.`);
+  async function onExport() {
+    if (!tenant) return;
+    const r = exportLocalFiles(tenant, activity);
+    setMsg(r.message);
   }
 
-  async function pause() {
-    const t = await setWatcherStatus("paused");
-    setTenant(t);
-    setMsg("Watcher paused.");
-  }
-
-  async function resume() {
-    const t = await setWatcherStatus("watching");
-    setTenant(t);
-    setMsg("Watcher resumed.");
-  }
-
-  async function reset() {
-    await resetDemoStore();
-    setMsg("Demo store reset. Log in again.");
-    router.replace("/login");
+  async function onGithubSync() {
+    if (!tenant) return;
+    await setGithubPat(pat.trim());
+    await setGithubRepo(repo.trim());
+    const r = await saveConfigToGithub(tenant);
+    setMsg(r.message);
   }
 
   if (!draft || !tenant) {
@@ -74,71 +84,145 @@ export default function Settings() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 56 }} showsVerticalScrollIndicator={false}>
         <Title>Settings</Title>
-        <Sub>Edit business/scope, reconnect platforms, pause watcher.</Sub>
+        <Sub>Keep it light — change only what you need.</Sub>
 
-        <Card style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.text, fontWeight: "700" }}>Business</Text>
-          <Label>Name</Label>
-          <Input
-            value={draft.business.businessName}
-            onChangeText={(v) =>
-              setDraft({ ...draft, business: { ...draft.business, businessName: v } })
-            }
+        <Card style={{ marginTop: space.lg, paddingVertical: 4, paddingHorizontal: 16 }}>
+          <Row
+            title="Business"
+            subtitle={draft.business.businessName || "Name, phone, website"}
+            right="Edit"
+            onPress={() => setEditing(editing === "business" ? null : "business")}
           />
-          <Label>Phone</Label>
-          <Input
-            value={draft.business.phone}
-            onChangeText={(v) =>
-              setDraft({ ...draft, business: { ...draft.business, phone: v } })
+          {editing === "business" && (
+            <View style={{ paddingBottom: 12 }}>
+              <Label>Name</Label>
+              <Input
+                value={draft.business.businessName}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, businessName: v } })
+                }
+              />
+              <Label>Phone</Label>
+              <Input
+                value={draft.business.phone}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, phone: v } })
+                }
+              />
+              <Label>Website</Label>
+              <Input
+                value={draft.business.website}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, website: v } })
+                }
+              />
+              <Label>Trades</Label>
+              <Input
+                value={draft.scope.inScope.join(", ")}
+                onChangeText={(v) =>
+                  setDraft({
+                    ...draft,
+                    scope: {
+                      ...draft.scope,
+                      inScope: v.split(",").map((x) => x.trim()).filter(Boolean),
+                    },
+                  })
+                }
+              />
+              <Btn title="Save" onPress={saveBusiness} />
+            </View>
+          )}
+
+          <Row
+            title="Facebook"
+            subtitle={
+              draft.connections.find((c) => c.type === "facebook" && c.connected)
+                ? "Connected · agent mode"
+                : "Not connected"
             }
+            right="Reconnect"
+            onPress={async () => {
+              await connectPlatform("facebook", draft.business.businessName || "Page");
+              const s = await getSession();
+              if (s) {
+                setTenant(s.tenant);
+                setDraft(s.tenant.onboarding);
+              }
+              setMsg("Facebook reconnected.");
+            }}
           />
-          <Label>Website</Label>
-          <Input
-            value={draft.business.website}
-            onChangeText={(v) =>
-              setDraft({ ...draft, business: { ...draft.business, website: v } })
-            }
+
+          <Row
+            title="Watcher"
+            subtitle={tenant.watcherStatus}
+            right={tenant.watcherStatus === "paused" ? "Resume" : "Pause"}
+            onPress={async () => {
+              const next = tenant.watcherStatus === "paused" ? "watching" : "paused";
+              const t = await setWatcherStatus(next);
+              setTenant(t);
+              setMsg(`Watcher ${next}.`);
+            }}
           />
-          <Label>In-scope trades (comma-separated)</Label>
-          <Input
-            value={draft.scope.inScope.join(", ")}
-            onChangeText={(v) =>
-              setDraft({
-                ...draft,
-                scope: {
-                  ...draft.scope,
-                  inScope: v.split(",").map((x) => x.trim()).filter(Boolean),
-                },
-              })
-            }
+
+          <Row
+            title="Export / Sync"
+            subtitle="Download YAML · optional GitHub save"
+            right="Open"
+            onPress={() => setEditing(editing === "sync" ? null : "sync")}
           />
-          <Btn title="Save changes" onPress={save} />
+          {editing === "sync" && (
+            <View style={{ paddingBottom: 12 }}>
+              <Sub>
+                Downloads stay on your device. GitHub save uses your PAT (AsyncStorage only — never
+                committed). Public repo should only hold demo tenant data.
+              </Sub>
+              <Btn title="Download business.yaml + activity" variant="secondary" onPress={onExport} />
+              <Label>GitHub repo (owner/name)</Label>
+              <Input value={repo} onChangeText={setRepo} autoCapitalize="none" />
+              <Label>Personal access token</Label>
+              <Input
+                value={pat}
+                onChangeText={setPat}
+                autoCapitalize="none"
+                secureTextEntry
+                placeholder="ghp_…"
+              />
+              <Btn title="Save config to GitHub" onPress={onGithubSync} />
+            </View>
+          )}
+
+          <Row
+            title="Billing"
+            subtitle={tenant.planActive ? `Plan · ${tenant.plan}` : "No plan"}
+            right="View"
+            onPress={() => router.push("/billing")}
+          />
+
+          <Row
+            title="Setup wizard"
+            subtitle="Business · who you help · Facebook"
+            onPress={() => router.push("/onboarding")}
+          />
+
+          <Row
+            title="Reset demo"
+            subtitle="Clear local store"
+            onPress={async () => {
+              await resetDemoStore();
+              router.replace("/login");
+            }}
+          />
         </Card>
 
-        <Card style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.text, fontWeight: "700" }}>Platforms</Text>
-          {draft.platforms.map((p) => (
-            <Btn key={p} title={`Reconnect ${p}`} variant="secondary" onPress={() => reconnect(p)} />
-          ))}
-        </Card>
-
-        <Card style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.text, fontWeight: "700" }}>Watcher</Text>
-          <Sub>Current: {tenant.watcherStatus}</Sub>
-          <Btn title="Pause" variant="secondary" onPress={pause} />
-          <Btn title="Resume" variant="secondary" onPress={resume} />
-        </Card>
-
-        <Card style={{ marginTop: 16 }}>
-          <Text style={{ color: colors.warn, fontWeight: "700" }}>Demo</Text>
-          <Btn title="Reset demo store" variant="ghost" onPress={reset} />
-        </Card>
-
-        {!!msg && <Text style={{ color: colors.accent2, marginTop: 12 }}>{msg}</Text>}
-        <Btn title="Back to dashboard" variant="ghost" onPress={() => router.push("/dashboard")} />
+        {!!msg && <Text style={styles.msg}>{msg}</Text>}
+        <Btn title="Back" variant="ghost" onPress={() => router.push("/dashboard")} />
       </ScrollView>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  msg: { color: colors.ok, marginTop: 16, fontSize: 13 },
+});

@@ -1,30 +1,37 @@
-# Routine: Social Lead Watcher (unattended)
+# Routine: Facebook lead watch (unattended)
 
-You are running an **unattended** lead-watch cycle for **{{business_name}}**.
+Unattended cycle for **{{business_name}}** as Page **{{identity_name}}**.
 
-## Speed & focus
+## Focus
 
-- Be fast. Newest posts first. Only **new** posts.
-- Cap outreach at **{{max_outreach_per_run}}**.
-- Prefer Facebook Page + joined groups from config.
-- Score quickly: strong / maybe / skip. Act on strong + clear maybe only.
+- Newest posts first · only **new** URLs
+- Cap: **{{max_outreach_per_run}}**
+- Facebook groups from config only (other platforms: ignore for now)
+- Craft unique copy every time:
+
+```bash
+python -m lead_watcher craft --config {{config_path}} --text "…" --group "…"
+```
+
+## Per post
+
+1. Score/craft
+2. skip → log `skipped` (reason) · continue
+3. strong / clear maybe → `lead_found` → comment (`best_comment`) → DM attempt
+4. Append handled.jsonl
+
+## Report (structured)
+
+Emit a JSON array of activity events (see OPERATOR.md). Then a one-line rollup:
+
+```bash
+python -c "from lead_watcher.summarize import daily_rollup; print(daily_rollup(events))"
+```
 
 ## Quiet mode
 
-If there are **no** actionable matches: reply with a one-line "No new leads" (or stay silent per operator preference). Do **not** pad the report with invented posts.
+No matches → `"No new leads"` (or silence). Never invent activity.
 
-## Output when you did outreach
+## Schedule
 
-For each action include:
-- classification + short reason
-- post URL
-- whether comment posted / DM sent
-- snippet of comment text
-
-## Deduping
-
-Check `data/handled.jsonl` before commenting. Append after each attempt (success or intentional skip-after-partial).
-
-## Schedule hint
-
-{{schedule_hint}} — if invoked on a timer, one cycle then stop.
+{{schedule_hint}} — one cycle, then stop.

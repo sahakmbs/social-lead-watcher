@@ -2,15 +2,9 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Btn, Card, Screen, Sub, Title } from "@/components/ui";
-import { colors } from "@/lib/theme";
+import { colors, space } from "@/lib/theme";
 import { activatePlan, getSession } from "@/lib/store";
 import type { PlanTier, Tenant } from "@/lib/types";
-
-const PLANS: { id: PlanTier; name: string; price: string; blurb: string }[] = [
-  { id: "starter", name: "Starter", price: "$49/mo", blurb: "1 platform, light outreach cap" },
-  { id: "growth", name: "Growth", price: "$149/mo", blurb: "Multi-platform + higher caps" },
-  { id: "pro", name: "Pro", price: "$349/mo", blurb: "Priority autonomy + multi-tenant ready" },
-];
 
 export default function Billing() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -18,11 +12,7 @@ export default function Billing() {
 
   useEffect(() => {
     getSession().then((s) => {
-      if (!s) {
-        // Allow browsing pricing while logged out
-        return;
-      }
-      setTenant(s.tenant);
+      if (s) setTenant(s.tenant);
     });
   }, []);
 
@@ -34,38 +24,30 @@ export default function Billing() {
     }
     const t = await activatePlan(plan);
     setTenant(t);
-    setMsg(`Demo subscribe: ${plan} marked active locally (no Stripe charge). STRIPE_* placeholders for later.`);
+    setMsg(`Growth marked active locally (demo — no charge).`);
   }
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <Title>Billing</Title>
-        <Sub>
-          Stripe Checkout stub. In DEMO_MODE, Subscribe activates the plan locally.
-          {"\n"}Env placeholders: STRIPE_SECRET_KEY, STRIPE_PRICE_STARTER, STRIPE_PRICE_GROWTH, STRIPE_PRICE_PRO
-        </Sub>
+        <Sub>One simple plan while we keep the product calm.</Sub>
 
-        {tenant && (
-          <Card style={{ marginTop: 12 }}>
-            <Text style={{ color: colors.text }}>
-              Current plan: {tenant.planActive ? tenant.plan : "none"}
-            </Text>
-          </Card>
-        )}
+        <Card style={{ marginTop: space.lg }}>
+          <Text style={styles.planName}>Growth</Text>
+          <Text style={styles.price}>$149/mo</Text>
+          <Text style={styles.blurb}>
+            Facebook lead watch · smart drafts · dashboard summaries. Other platforms listed as they
+            come online.
+          </Text>
+          <Btn
+            title={tenant?.planActive ? "Active (demo)" : "Subscribe (demo)"}
+            onPress={() => subscribe("growth")}
+            disabled={!!tenant?.planActive}
+          />
+          {!!msg && <Text style={{ color: colors.ok, marginTop: 12, fontSize: 13 }}>{msg}</Text>}
+        </Card>
 
-        <View style={{ marginTop: 16, gap: 12 }}>
-          {PLANS.map((p) => (
-            <Card key={p.id} style={tenant?.plan === p.id && tenant.planActive ? styles.active : undefined}>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>{p.name}</Text>
-              <Text style={{ color: colors.text, fontSize: 28, fontWeight: "700" }}>{p.price}</Text>
-              <Text style={{ color: colors.muted, marginTop: 6 }}>{p.blurb}</Text>
-              <Btn title="Subscribe" onPress={() => subscribe(p.id)} />
-            </Card>
-          ))}
-        </View>
-
-        {!!msg && <Text style={{ color: colors.accent2, marginTop: 16 }}>{msg}</Text>}
         <Btn title="Back" variant="ghost" onPress={() => router.back()} />
       </ScrollView>
     </Screen>
@@ -73,5 +55,7 @@ export default function Billing() {
 }
 
 const styles = StyleSheet.create({
-  active: { borderColor: "rgba(59,130,246,0.6)", borderWidth: 2 },
+  planName: { color: colors.muted, fontSize: 13, fontWeight: "500" },
+  price: { color: colors.text, fontSize: 36, fontWeight: "600", marginTop: 4, letterSpacing: -1 },
+  blurb: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 12, marginBottom: 8 },
 });

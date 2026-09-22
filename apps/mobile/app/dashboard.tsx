@@ -1,15 +1,16 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Btn, Card, Screen, Stat, Sub, Title } from "@/components/ui";
-import { colors } from "@/lib/theme";
+import { colors, space } from "@/lib/theme";
+import { dailyRollup, displayLine, formatTime } from "@/lib/activity";
 import { getDashboard, logout, setWatcherStatus } from "@/lib/store";
 import type { ActivityRecord, Tenant, WatcherStatus } from "@/lib/types";
 
 function statusColor(s: WatcherStatus) {
   if (s === "watching") return colors.ok;
   if (s === "needs_attention") return colors.warn;
-  return colors.muted;
+  return colors.faint;
 }
 
 function statusLabel(s: WatcherStatus) {
@@ -20,19 +21,16 @@ function statusLabel(s: WatcherStatus) {
 
 export default function Dashboard() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [email, setEmail] = useState("");
   const [today, setToday] = useState({ leadsFound: 0, commentsPosted: 0, dmsSent: 0, skipped: 0 });
   const [activity, setActivity] = useState<ActivityRecord[]>([]);
-  const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await getDashboard();
       setTenant(data.tenant);
-      setEmail(data.user.email);
       setToday(data.today);
       setActivity(data.activity);
-      setError("");
     } catch {
       router.replace("/login");
     }
@@ -59,98 +57,109 @@ export default function Dashboard() {
   if (!tenant) {
     return (
       <Screen>
-        <Sub>Loading dashboard…</Sub>
+        <Sub>Loading…</Sub>
       </Screen>
     );
   }
 
+  const heroValue =
+    tenant.watcherStatus === "watching"
+      ? today.commentsPosted + today.dmsSent || today.leadsFound
+      : statusLabel(tenant.watcherStatus);
+  const heroLabel =
+    tenant.watcherStatus === "watching"
+      ? today.commentsPosted + today.dmsSent > 0
+        ? "Leads reached today"
+        : today.leadsFound > 0
+          ? "Leads found today"
+          : "Watching"
+      : "Status";
+  const rollup = dailyRollup(activity);
+  const fb = tenant.onboarding.connections.find((c) => c.type === "facebook" && c.connected);
+
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 56 }} showsVerticalScrollIndicator={false}>
         <View style={styles.top}>
           <View style={{ flex: 1 }}>
-            <Title>Dashboard</Title>
-            <Sub>{tenant.onboarding.business.businessName || "Your business"} · {email}</Sub>
+            <Text style={styles.biz}>{tenant.onboarding.business.businessName || "Your business"}</Text>
+            <View style={styles.statusPill}>
+              <View style={[styles.dot, { backgroundColor: statusColor(tenant.watcherStatus) }]} />
+              <Text style={styles.statusText}>{statusLabel(tenant.watcherStatus)}</Text>
+              {!!fb && <Text style={styles.statusMeta}> · Facebook</Text>}
+            </View>
           </View>
+          <Pressable onPress={() => router.push("/settings")} hitSlop={12}>
+            <Text style={styles.gear}>Settings</Text>
+          </Pressable>
         </View>
 
-        <Card style={{ marginTop: 12 }}>
-          <Text style={styles.label}>Status</Text>
-          <View style={styles.statusRow}>
-            <View style={[styles.dot, { backgroundColor: statusColor(tenant.watcherStatus) }]} />
-            <Text style={{ color: colors.text, fontWeight: "700", fontSize: 18 }}>
-              {statusLabel(tenant.watcherStatus)}
-            </Text>
-          </View>
-          <Text style={{ color: colors.muted, marginTop: 6, fontSize: 12 }}>
-            Plan: {tenant.planActive ? tenant.plan : "none"} · DEMO_MODE local store
-          </Text>
-          <Btn
-            title={tenant.watcherStatus === "paused" ? "Resume watcher" : "Pause watcher"}
-            variant="secondary"
-            onPress={togglePause}
-          />
-        </Card>
+        {/* Hero */}
+        <View style={styles.hero}>
+          <Text style={styles.heroValue}>{heroValue}</Text>
+          <Text style={styles.heroLabel}>{heroLabel}</Text>
+          <Text style={styles.rollup}>{rollup}</Text>
+        </View>
 
-        <Text style={styles.section}>Today</Text>
+        {/* Supporting stats */}
         <View style={styles.stats}>
           <Stat label="Leads" value={today.leadsFound} />
           <Stat label="Comments" value={today.commentsPosted} />
           <Stat label="DMs" value={today.dmsSent} />
-          <Stat label="Skipped" value={today.skipped} />
         </View>
 
-        <Text style={styles.section}>Connected platforms</Text>
-        <Card>
-          {tenant.onboarding.connections.filter((c) => c.connected).length === 0 && (
-            <Text style={{ color: colors.muted }}>No platforms connected yet.</Text>
-          )}
-          {tenant.onboarding.connections
-            .filter((c) => c.connected)
-            .map((c) => (
-              <View key={c.type} style={styles.platRow}>
-                <Text style={{ color: colors.text, fontWeight: "600" }}>{c.type}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {c.identityName} · {c.status}
-                </Text>
-                {!!c.note && (
-                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{c.note}</Text>
-                )}
-              </View>
-            ))}
-        </Card>
+        {/* Activity */}
+        <Text style={styles.section}>Activity</Text>
+        {activity.length === 0 ? (
+          <Card style={{ marginTop: 8 }}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "500" }}>Nothing yet</Text>
+            <Sub>Connect Facebook and go live to start watching groups.</Sub>
+            <Btn title="Finish setup" onPress={() => router.push("/onboarding")} />
+          </Card>
+        ) : (
+          <Card style={{ marginTop: 8, paddingVertical: 4, paddingHorizontal: 16 }}>
+            {activity.slice(0, 20).map((a) => {
+              const open = expanded === a.id;
+              return (
+                <Pressable
+                  key={a.id}
+                  onPress={() => setExpanded(open ? null : a.id)}
+                  style={styles.actRow}
+                >
+                  <Text style={styles.actTime}>{formatTime(a.ts)}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.actLine}>{displayLine(a)}</Text>
+                    {open && (
+                      <View style={{ marginTop: 6 }}>
+                        {!!a.need && (
+                          <Text style={styles.actMeta}>Need · {a.need}</Text>
+                        )}
+                        {!!a.classification && (
+                          <Text style={styles.actMeta}>Class · {a.classification}</Text>
+                        )}
+                        {!!a.postUrl && (
+                          <Text
+                            style={[styles.actMeta, { color: colors.accent }]}
+                            onPress={() => Linking.openURL(a.postUrl!)}
+                          >
+                            Open post
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Card>
+        )}
 
-        <Text style={styles.section}>Recent activity</Text>
-        <Card>
-          {activity.length === 0 && (
-            <Text style={{ color: colors.muted }}>No activity yet — go live from Setup.</Text>
-          )}
-          {activity.map((a) => (
-            <View key={a.id} style={styles.actRow}>
-              <Text style={{ color: colors.accent2, fontSize: 11 }}>
-                {new Date(a.ts).toLocaleString()} · {a.platform} · {a.action}
-              </Text>
-              {!!a.postSnippet && (
-                <Text style={{ color: colors.text, marginTop: 2 }} numberOfLines={2}>
-                  {a.postSnippet}
-                </Text>
-              )}
-              {!!a.detail && (
-                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{a.detail}</Text>
-              )}
-              {!!a.need && (
-                <Text style={{ color: colors.ok, fontSize: 12, marginTop: 2 }}>need: {a.need}</Text>
-              )}
-            </View>
-          ))}
-        </Card>
-
-        {!!error && <Text style={{ color: colors.danger }}>{error}</Text>}
-
-        <View style={{ marginTop: 16 }}>
-          <Btn title="Setup / onboarding" variant="secondary" onPress={() => router.push("/onboarding")} />
-          <Btn title="Settings" variant="secondary" onPress={() => router.push("/settings")} />
-          <Btn title="Billing" variant="secondary" onPress={() => router.push("/billing")} />
+        <View style={{ marginTop: space.lg }}>
+          <Btn
+            title={tenant.watcherStatus === "paused" ? "Resume" : "Pause"}
+            variant="secondary"
+            onPress={togglePause}
+          />
           <Btn title="Log out" variant="ghost" onPress={onLogout} />
         </View>
       </ScrollView>
@@ -159,32 +168,35 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: "row", alignItems: "flex-start" },
-  label: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  statusRow: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
+  top: { flexDirection: "row", alignItems: "flex-start", marginTop: 8 },
+  biz: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  statusPill: { flexDirection: "row", alignItems: "center", marginTop: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4, marginRight: 6 },
+  statusText: { color: colors.muted, fontSize: 13 },
+  statusMeta: { color: colors.faint, fontSize: 13 },
+  gear: { color: colors.faint, fontSize: 13, fontWeight: "500" },
+  hero: { marginTop: space.xl, marginBottom: space.lg },
+  heroValue: { color: colors.text, fontSize: 48, fontWeight: "600", letterSpacing: -1.5 },
+  heroLabel: { color: colors.muted, fontSize: 15, marginTop: 4 },
+  rollup: { color: colors.faint, fontSize: 13, marginTop: 8, lineHeight: 18 },
+  stats: { flexDirection: "row", gap: 8, marginBottom: 8 },
   section: {
-    color: colors.text,
-    fontWeight: "700",
-    fontSize: 16,
-    marginTop: 20,
-    marginBottom: 8,
-  },
-  stats: { flexDirection: "row" },
-  platRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    color: colors.faint,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginTop: space.lg,
+    marginBottom: 4,
   },
   actRow: {
-    paddingVertical: 10,
+    flexDirection: "row",
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    gap: 12,
   },
+  actTime: { color: colors.faint, fontSize: 12, width: 56, marginTop: 2 },
+  actLine: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  actMeta: { color: colors.muted, fontSize: 12, marginTop: 2 },
 });

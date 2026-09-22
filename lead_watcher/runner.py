@@ -12,9 +12,11 @@ from typing import Optional, Sequence
 from lead_watcher.config import ConfigError, load_config, write_example_config
 from lead_watcher.dedupe import HandledStore
 from lead_watcher.matcher import score_post, should_outreach
-from lead_watcher.models import Classification, OutreachAction, Post
+from lead_watcher.models import OutreachAction, Post
 from lead_watcher.platforms import load_adapters
 from lead_watcher.platforms.base import ManualBrowserRequired
+from lead_watcher.reply import craft_replies, pick_best_comment
+from lead_watcher.summarize import activity_one_liner
 from lead_watcher.templates import render_comment, render_dm, render_for_post
 
 
@@ -84,6 +86,58 @@ def cmd_render_dm(args: argparse.Namespace) -> int:
         group=args.group or "",
     )
     print(text)
+    return 0
+
+
+
+def cmd_craft(args: argparse.Namespace) -> int:
+    """Classify a post and emit unique comment options + one DM."""
+    try:
+        config = load_config(args.config)
+    except ConfigError as e:
+        print(f"Config error: {e}", file=sys.stderr)
+        return 2
+
+    text = args.text
+    if args.file:
+        text = Path(args.file).read_text(encoding="utf-8")
+    if not text:
+        print("Provide --text or --file", file=sys.stderr)
+        return 2
+
+    post = Post(
+        url=args.url or "",
+        text=text,
+        author=args.author or "",
+        group=args.group or "",
+        platform=args.platform or "facebook",
+    )
+    crafted = craft_replies(config, post, n_comments=args.n or 3)
+    out = {
+        "classification": crafted.classification.value,
+        "score": crafted.score,
+        "need": crafted.need,
+        "reason": crafted.reason,
+        "tone": crafted.tone,
+        "should_outreach": crafted.should_outreach,
+        "comments": [
+            {"strategy": c.strategy, "text": c.comment, "reason": c.reason}
+            for c in crafted.comments
+        ],
+        "best_comment": pick_best_comment(crafted),
+        "dm": crafted.dm,
+        "group": post.group,
+        "summary_line": activity_one_liner(
+            {
+                "action": "lead_found" if crafted.should_outreach else "skipped",
+                "need": crafted.need,
+                "group": post.group,
+                "platform": post.platform or "facebook",
+                "classification": crafted.classification.value,
+            }
+        ),
+    }
+    print(json.dumps(out, indent=2))
     return 0
 
 
@@ -162,7 +216,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         if outreach_count >= config.max_outreach_per_run:
             break
 
-        comment, dm = render_for_post(config, post, match.need or "your project")
+        crafted = craft_replies(config, post, match)
+        comment = pick_best_comment(crafted) or render_for_post(
+            config, post, match.need or "your project"
+        )[0]
+        dm = crafted.dm or render_for_post(config, post, match.need or "your project")[1]
         action = OutreachAction(
             post=post,
             match=match,
@@ -259,6 +317,21 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--author", default="")
     sp.add_argument("--group", default="")
     sp.set_defaults(func=cmd_render_dm)
+
+    
+    sp = sub.add_parser(
+        "craft",
+        help="Classify post + generate unique comment options and one DM",
+    )
+    sp.add_argument("--config", required=True)
+    sp.add_argument("--text", default="")
+    sp.add_argument("--file", default="")
+    sp.add_argument("--url", default="")
+    sp.add_argument("--author", default="")
+    sp.add_argument("--group", default="")
+    sp.add_argument("--platform", default="facebook")
+    sp.add_argument("-n", type=int, default=3, help="Number of comment variants (default 3)")
+    sp.set_defaults(func=cmd_craft)
 
     sp = sub.add_parser("init-config", help="Write a starter business.yaml")
     sp.add_argument("--out", default="config/business.yaml")

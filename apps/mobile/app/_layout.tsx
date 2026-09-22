@@ -9,16 +9,17 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.bg },
-          headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: "600" },
+          headerTintColor: colors.muted,
+          headerTitleStyle: { fontWeight: "500", fontSize: 15 },
+          headerShadowVisible: false,
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ title: "Log in" }} />
         <Stack.Screen name="signup" options={{ title: "Sign up" }} />
-        <Stack.Screen name="onboarding" options={{ title: "Setup" }} />
-        <Stack.Screen name="dashboard" options={{ title: "Dashboard", headerBackVisible: false }} />
+        <Stack.Screen name="onboarding" options={{ title: "Setup", headerBackVisible: false }} />
+        <Stack.Screen name="dashboard" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: "Settings" }} />
         <Stack.Screen name="billing" options={{ title: "Billing" }} />
       </Stack>

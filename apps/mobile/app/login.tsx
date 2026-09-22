@@ -34,15 +34,15 @@ export default function Login() {
   return (
     <Screen>
       <Title>Log in</Title>
-      <Sub>AUTH_PROVIDER=stub · DEMO_MODE on by default</Sub>
-      <Card style={{ marginTop: 16 }}>
+      <Sub>Demo works offline — no cloud keys needed.</Sub>
+      <Card style={{ marginTop: 20 }}>
         <Label>Email</Label>
         <Input autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
         <Label>Password</Label>
         <Input secureTextEntry value={password} onChangeText={setPassword} />
         {!!error && <Text style={{ color: colors.danger, marginTop: 10 }}>{error}</Text>}
         <Btn title={loading ? "Signing in…" : "Sign in"} onPress={onSubmit} disabled={loading} />
-        <Btn title="One-click demo account" variant="secondary" onPress={onDemo} disabled={loading} />
+        <Btn title="Try demo" variant="secondary" onPress={onDemo} disabled={loading} />
         <Btn title="Create account" variant="ghost" onPress={() => router.push("/signup")} />
       </Card>
     </Screen>

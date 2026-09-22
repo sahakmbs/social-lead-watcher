@@ -127,7 +127,7 @@ export async function goLive(): Promise<Tenant> {
   const store = await loadStore();
   const t = store.tenants.find((x) => x.id === sess.tenant.id)!;
   t.onboarding.completed = true;
-  t.onboarding.step = 4;
+  t.onboarding.step = 2;
   t.watcherStatus = "watching";
   t.updatedAt = new Date().toISOString();
   store.activity.unshift({

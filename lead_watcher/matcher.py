@@ -1,4 +1,8 @@
-"""Keyword / geo / scope scoring — pure functions, no I/O."""
+"""Keyword / geo / scope scoring — pure functions, no I/O.
+
+Tuned for Facebook contractor / homeowner group posts:
+strong homeowner asks, maybe weaker asks, skip self-ads & noise.
+"""
 
 from __future__ import annotations
 
@@ -41,12 +45,45 @@ def _request_signals(text: str) -> int:
         r"\bwho (can|does|is)\b",
         r"\bwho (should|would) (i|we)\b",
         r"\breferrals?\b",
+        r"\bsuggestions?\b",
+        r"\brecommend a\b",
+        r"\blooking to (get|hire|replace|install)\b",
+        r"\bcan anyone\b",
+        r"\bplease recommend\b",
+        r"\bany good\b",
+        r"\bdm me\b",
+        r"\binbox (me|open)\b",
     ]
     score = 0
     for pat in signals:
         if re.search(pat, t):
             score += 1
-    return min(score, 3)
+    return min(score, 4)
+
+
+def _contractor_self_ad(text: str) -> bool:
+    """Extra heuristic: contractor advertising availability (even without skip phrase)."""
+    t = _normalize(text)
+    offering = bool(
+        re.search(
+            r"\b(available (for|to)|taking (new )?clients|dm for (rates|pricing)|"
+            r"my company (does|can)|we are hiring|i('m| am) (a |an )?(licensed )?(contractor|roofer|sider))\b",
+            t,
+        )
+    )
+    asking = bool(
+        re.search(
+            r"\b(looking for|need|recommend|anyone know|quote|estimate|hire)\b",
+            t,
+        )
+    )
+    # Self-ad if offering services without homeowner ask language
+    if offering and not asking:
+        return True
+    # "I do siding, call me" style
+    if re.search(r"\b(call\/text|call or text|text me for)\b", t) and not asking:
+        return True
+    return False
 
 
 def _extract_need(text: str, matched_in_scope: list[str]) -> str:
@@ -55,7 +92,7 @@ def _extract_need(text: str, matched_in_scope: list[str]) -> str:
         return sorted(matched_in_scope, key=len, reverse=True)[0]
     t = _normalize(text)
     m = re.search(
-        r"(?:looking for|need(?:s|ed)?|help with)\s+(.{3,60}?)(?:\.|,|!|\?|$)",
+        r"(?:looking for|need(?:s|ed)?|help with|recommend(?:ation)? for)\s+(.{3,60}?)(?:\.|,|!|\?|$)",
         t,
     )
     if m:
@@ -67,8 +104,9 @@ def score_post(post: Post | str, config: BusinessConfig) -> MatchResult:
     """
     Score a post against business scope.
 
-    Rules (mirrors MasterFix intent):
+    Rules (mirrors MasterFix / Facebook group intent):
     - skip_patterns → SKIP (contractor self-ads, looking-for-work, hourly, etc.)
+    - contractor self-ad heuristic → SKIP
     - out_of_scope hits without in_scope → SKIP
     - in_scope + request signals + optional geo → STRONG / MAYBE
     - never invent content; score only what's in the text
@@ -89,6 +127,14 @@ def score_post(post: Post | str, config: BusinessConfig) -> MatchResult:
             score=0,
             reason=f"skip_patterns: {', '.join(matched_skip)}",
             matched_skip=matched_skip,
+        )
+
+    if _contractor_self_ad(text):
+        return MatchResult(
+            classification=Classification.SKIP,
+            score=0,
+            reason="contractor_self_ad heuristic",
+            matched_skip=["contractor_self_ad"],
         )
 
     matched_in = _find_matches(blob, config.in_scope)
@@ -121,7 +167,6 @@ def score_post(post: Post | str, config: BusinessConfig) -> MatchResult:
         score += 1
         reasons.append(f"service_area: {', '.join(matched_geo)}")
     elif config.service_area and matched_in:
-        # In scope but no geo mentioned — still maybe, slight penalty note
         reasons.append("no_geo_match")
 
     # Hard skip: clearly wrong trade language already handled; if nothing

@@ -7,7 +7,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { colors } from "@/lib/theme";
+import { colors, space } from "@/lib/theme";
 
 export function Screen({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   return <View style={[styles.screen, style]}>{children}</View>;
@@ -27,9 +27,9 @@ export function Label({ children }: { children: React.ReactNode }) {
 export function Input(props: TextInputProps) {
   return (
     <TextInput
-      placeholderTextColor={colors.muted}
+      placeholderTextColor={colors.faint}
       {...props}
-      style={[styles.input, props.multiline && { minHeight: 72, textAlignVertical: "top" }, props.style]}
+      style={[styles.input, props.multiline && { minHeight: 80, textAlignVertical: "top" }, props.style]}
     />
   );
 }
@@ -45,7 +45,7 @@ export function Btn({
   disabled?: boolean;
 }) {
   const bg =
-    variant === "primary" ? colors.accent : variant === "secondary" ? "#1e293b" : "transparent";
+    variant === "primary" ? colors.accent : variant === "secondary" ? colors.cardHover : "transparent";
   return (
     <Pressable
       onPress={onPress}
@@ -54,13 +54,13 @@ export function Btn({
         styles.btn,
         {
           backgroundColor: bg,
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-          borderWidth: variant === "secondary" ? 1 : 0,
+          opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
+          borderWidth: variant === "ghost" ? 0 : variant === "secondary" ? 1 : 0,
           borderColor: colors.border,
         },
       ]}
     >
-      <Text style={styles.btnText}>{title}</Text>
+      <Text style={[styles.btnText, variant === "ghost" && { color: colors.muted }]}>{title}</Text>
     </Pressable>
   );
 }
@@ -76,15 +76,9 @@ export function Chip({
   return (
     <Pressable
       onPress={onPress}
-      style={[
-        styles.chip,
-        active && {
-          backgroundColor: "rgba(59,130,246,0.25)",
-          borderColor: "rgba(59,130,246,0.5)",
-        },
-      ]}
+      style={[styles.chip, active && { backgroundColor: colors.accentSoft, borderColor: colors.accent }]}
     >
-      <Text style={styles.chipText}>{label}</Text>
+      <Text style={[styles.chipText, active && { color: colors.text }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -96,64 +90,87 @@ export function Stat({ label, value }: { label: string; value: number | string }
     </View>
   );
 }
+export function Row({
+  title,
+  subtitle,
+  onPress,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  onPress?: () => void;
+  right?: string;
+}) {
+  const Comp = onPress ? Pressable : View;
+  return (
+    <Comp onPress={onPress} style={styles.row}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
+      </View>
+      {!!right && <Text style={styles.rowRight}>{right}</Text>}
+    </Comp>
+  );
+}
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, padding: 16 },
+  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg, paddingTop: space.md },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
+    padding: space.md,
   },
-  title: { color: colors.text, fontSize: 24, fontWeight: "700" },
-  sub: { color: colors.muted, fontSize: 14, marginTop: 4, lineHeight: 20 },
+  title: { color: colors.text, fontSize: 28, fontWeight: "600", letterSpacing: -0.5 },
+  sub: { color: colors.muted, fontSize: 15, marginTop: 6, lineHeight: 22 },
   label: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
+    color: colors.faint,
+    fontSize: 12,
+    fontWeight: "500",
     marginBottom: 6,
-    marginTop: 12,
+    marginTop: space.md,
   },
   input: {
-    backgroundColor: "rgba(2,6,23,0.45)",
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: "rgba(100,116,139,0.5)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     color: colors.text,
-    fontSize: 15,
+    fontSize: 16,
   },
   btn: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     alignItems: "center",
     marginTop: 10,
   },
-  btnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  btnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
   chip: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "#1e293b",
+    backgroundColor: colors.card,
     paddingHorizontal: 12,
     paddingVertical: 6,
     marginRight: 8,
     marginBottom: 8,
   },
-  chipText: { color: colors.text, fontSize: 12 },
-  stat: {
-    flex: 1,
-    backgroundColor: "rgba(2,6,23,0.4)",
-    borderRadius: 12,
-    padding: 12,
-    marginRight: 8,
-    minWidth: 70,
+  chipText: { color: colors.muted, fontSize: 12 },
+  stat: { flex: 1, minWidth: 64 },
+  statValue: { color: colors.text, fontSize: 20, fontWeight: "600" },
+  statLabel: { color: colors.faint, fontSize: 12, marginTop: 2 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  statValue: { color: colors.text, fontSize: 22, fontWeight: "700" },
-  statLabel: { color: colors.muted, fontSize: 11, marginTop: 2 },
+  rowTitle: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  rowSub: { color: colors.muted, fontSize: 13, marginTop: 2 },
+  rowRight: { color: colors.faint, fontSize: 13, marginLeft: 12 },
 });

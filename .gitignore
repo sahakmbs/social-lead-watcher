@@ -39,8 +39,12 @@ apps/*/.expo/
 apps/mobile/.env
 apps/web/.next/
 
-# Tenant runtime exports
+# Tenant runtime exports (keep demo example public)
 tenants/*/business.yaml
+tenants/*/activity*.json
+!tenants/demo/
+!tenants/demo/**
+!tenants/README.md
 !tenants/.gitkeep
 
 # Local demo DB / stores
@@ -48,3 +52,7 @@ apps/web/data/store.json
 *.sqlite
 apps/web/
 apps/mobile/.env
+
+# Expo static export assets (paths may include node_modules segment)
+!docs/assets/
+!docs/assets/**

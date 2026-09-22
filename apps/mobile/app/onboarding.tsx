@@ -1,20 +1,12 @@
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Btn, Card, Chip, Input, Label, Screen, Sub, Title } from "@/components/ui";
-import { colors } from "@/lib/theme";
+import { Btn, Card, Input, Label, Screen, Sub, Title } from "@/components/ui";
+import { colors, space } from "@/lib/theme";
 import { connectPlatform, getSession, goLive, saveOnboarding } from "@/lib/store";
 import type { OnboardingDraft, PlatformType } from "@/lib/types";
-import { scorePreview } from "@/lib/scorePreview";
 
-const STEPS = ["Business", "Lead scope", "Platforms", "Connect", "Review"];
-
-const META: Record<PlatformType, { label: string; blurb: string }> = {
-  facebook: { label: "Facebook", blurb: "Page identity + agent/browser worker playbook" },
-  nextdoor: { label: "Nextdoor", blurb: "OAuth stub + adapter hook" },
-  craigslist: { label: "Craigslist", blurb: "Search/RSS adapter stub" },
-  reddit: { label: "Reddit", blurb: "OAuth / PRAW adapter stub" },
-};
+const STEPS = ["Business", "Who you help", "Facebook"];
 
 function csvToList(s: string) {
   return s.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
@@ -27,23 +19,22 @@ export default function Onboarding() {
   const [draft, setDraft] = useState<OnboardingDraft | null>(null);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
-  const [previewText, setPreviewText] = useState(
-    "Looking for vinyl siding contractor in Seattle — need recommendations",
-  );
-  const [previewOut, setPreviewOut] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     getSession().then((s) => {
       if (!s) router.replace("/signup");
-      else setDraft(s.tenant.onboarding);
+      else {
+        const ob = { ...s.tenant.onboarding };
+        // Clamp legacy 5-step drafts into 3-step flow
+        if (ob.step > 2) ob.step = 2;
+        setDraft(ob);
+      }
     });
   }, []);
 
   const step = draft?.step ?? 0;
-  const connected = useMemo(
-    () => new Set((draft?.connections || []).filter((c) => c.connected).map((c) => c.type)),
-    [draft],
-  );
+  const fbConnected = (draft?.connections || []).some((c) => c.type === "facebook" && c.connected);
 
   async function persist(next: OnboardingDraft) {
     setSaving(true);
@@ -68,13 +59,18 @@ export default function Onboarding() {
     await persist({ ...draft, step: Math.max(step - 1, 0) });
   }
 
-  async function onConnect(p: PlatformType) {
+  async function onConnectFb() {
     setSaving(true);
     try {
-      await connectPlatform(p, draft?.business.businessName || `${p} account`);
+      await connectPlatform("facebook", draft?.business.businessName || "Business Page");
+      // Ensure other platforms stay listed but not required
       const s = await getSession();
-      if (s) setDraft(s.tenant.onboarding);
-      setMsg(p === "facebook" ? "Facebook connected (Page + agent_mode)." : `${p} connected (OAuth stub).`);
+      if (s) {
+        const ob = s.tenant.onboarding;
+        const listed: PlatformType[] = ["facebook", "nextdoor", "craigslist", "reddit"];
+        setDraft({ ...ob, platforms: listed });
+      }
+      setMsg("Facebook ready — Page + agent worker.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Connect failed");
     } finally {
@@ -86,7 +82,8 @@ export default function Onboarding() {
     if (!draft) return;
     setSaving(true);
     try {
-      await saveOnboarding({ ...draft, completed: true, step: 4 });
+      const listed: PlatformType[] = ["facebook", "nextdoor", "craigslist", "reddit"];
+      await saveOnboarding({ ...draft, platforms: listed, completed: true, step: 2 });
       await goLive();
       router.replace("/dashboard");
     } catch (e) {
@@ -99,66 +96,94 @@ export default function Onboarding() {
   if (!draft) {
     return (
       <Screen>
-        <Sub>Loading setup…</Sub>
+        <Sub>Loading…</Sub>
       </Screen>
     );
   }
 
   return (
     <Screen style={{ paddingTop: 8 }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
-        <Title>Onboarding</Title>
-        <Sub>Draft persists locally as you move between steps.</Sub>
-        <View style={styles.stepRow}>
-          {STEPS.map((label, i) => (
-            <Chip
-              key={label}
-              label={`${i + 1}. ${label}`}
-              active={i === step}
-              onPress={() => persist({ ...draft, step: i })}
-            />
+      <ScrollView contentContainerStyle={{ paddingBottom: 56 }} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepMeta}>
+          Step {step + 1} of {STEPS.length}
+        </Text>
+        <Title>{STEPS[step]}</Title>
+        <Sub>
+          {step === 0 && "A few basics so comments sound like you."}
+          {step === 1 && "Trades and areas you want to catch."}
+          {step === 2 && "Facebook is smart today. Other platforms stay listed for later."}
+        </Sub>
+
+        <View style={styles.progress}>
+          {STEPS.map((_, i) => (
+            <View key={i} style={[styles.bar, i <= step && styles.barOn]} />
           ))}
         </View>
 
-        <Card>
+        <Card style={{ marginTop: space.md }}>
           {step === 0 && (
             <View>
-              <Text style={styles.h}>Business info</Text>
-              {(
-                [
-                  ["businessName", "Business name"],
-                  ["website", "Website"],
-                  ["phone", "Phone"],
-                  ["email", "Lead email"],
-                  ["voice", "Voice / tone"],
-                  ["licenseNote", "License note"],
-                ] as const
-              ).map(([key, label]) => (
-                <View key={key}>
-                  <Label>{label}</Label>
+              <Label>Business name</Label>
+              <Input
+                value={draft.business.businessName}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, businessName: v } })
+                }
+                placeholder="Cascade Home Pros"
+              />
+              <Label>Phone</Label>
+              <Input
+                value={draft.business.phone}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, phone: v } })
+                }
+                placeholder="(555) 123-4567"
+                keyboardType="phone-pad"
+              />
+              <Label>Website</Label>
+              <Input
+                value={draft.business.website}
+                onChangeText={(v) =>
+                  setDraft({ ...draft, business: { ...draft.business, website: v } })
+                }
+                placeholder="https://"
+                autoCapitalize="none"
+              />
+              <Pressable onPress={() => setShowAdvanced((x) => !x)} style={{ marginTop: 16 }}>
+                <Text style={styles.advToggle}>{showAdvanced ? "Hide advanced" : "Advanced"}</Text>
+              </Pressable>
+              {showAdvanced && (
+                <View>
+                  <Label>Email</Label>
                   <Input
-                    value={draft.business[key]}
+                    value={draft.business.email}
                     onChangeText={(v) =>
-                      setDraft({ ...draft, business: { ...draft.business, [key]: v } })
+                      setDraft({ ...draft, business: { ...draft.business, email: v } })
+                    }
+                    autoCapitalize="none"
+                  />
+                  <Label>Voice</Label>
+                  <Input
+                    value={draft.business.voice}
+                    onChangeText={(v) =>
+                      setDraft({ ...draft, business: { ...draft.business, voice: v } })
+                    }
+                  />
+                  <Label>License note</Label>
+                  <Input
+                    value={draft.business.licenseNote}
+                    onChangeText={(v) =>
+                      setDraft({ ...draft, business: { ...draft.business, licenseNote: v } })
                     }
                   />
                 </View>
-              ))}
+              )}
             </View>
           )}
 
           {step === 1 && (
             <View>
-              <Text style={styles.h}>Lead scope</Text>
-              <Label>Service area</Label>
-              <Input
-                value={listToCsv(draft.scope.serviceArea)}
-                onChangeText={(v) =>
-                  setDraft({ ...draft, scope: { ...draft.scope, serviceArea: csvToList(v) } })
-                }
-                placeholder="Seattle, Bellevue, King County"
-              />
-              <Label>In scope trades</Label>
+              <Label>Who you help (trades)</Label>
               <Input
                 multiline
                 value={listToCsv(draft.scope.inScope)}
@@ -167,146 +192,93 @@ export default function Onboarding() {
                 }
                 placeholder="vinyl siding, roofing, deck"
               />
-              <Label>Out of scope</Label>
+              <Label>Where (cities / counties)</Label>
               <Input
-                value={listToCsv(draft.scope.outOfScope)}
+                value={listToCsv(draft.scope.serviceArea)}
                 onChangeText={(v) =>
-                  setDraft({ ...draft, scope: { ...draft.scope, outOfScope: csvToList(v) } })
+                  setDraft({ ...draft, scope: { ...draft.scope, serviceArea: csvToList(v) } })
                 }
+                placeholder="Seattle, Bellevue, King County"
               />
-              <Label>Skip patterns</Label>
-              <Input
-                multiline
-                value={listToCsv(draft.scope.skipPatterns)}
-                onChangeText={(v) =>
-                  setDraft({ ...draft, scope: { ...draft.scope, skipPatterns: csvToList(v) } })
-                }
-              />
-              <Label>Max outreach / run</Label>
-              <Input
-                keyboardType="number-pad"
-                value={String(draft.scope.maxOutreach)}
-                onChangeText={(v) =>
-                  setDraft({
-                    ...draft,
-                    scope: { ...draft.scope, maxOutreach: Number(v) || 3 },
-                  })
-                }
-              />
-              <View style={styles.previewBox}>
-                <Text style={styles.previewLabel}>Score preview (JS mirror of lead_watcher)</Text>
-                <Input multiline value={previewText} onChangeText={setPreviewText} />
-                <Btn
-                  title="Score sample post"
-                  variant="secondary"
-                  onPress={() =>
-                    setPreviewOut(
-                      scorePreview(previewText, {
-                        inScope: draft.scope.inScope,
-                        outOfScope: draft.scope.outOfScope,
-                        skipPatterns: draft.scope.skipPatterns,
-                        serviceArea: draft.scope.serviceArea,
-                      }),
-                    )
-                  }
-                />
-                {!!previewOut && <Text style={styles.previewOut}>{previewOut}</Text>}
-              </View>
+              <Pressable onPress={() => setShowAdvanced((x) => !x)} style={{ marginTop: 16 }}>
+                <Text style={styles.advToggle}>{showAdvanced ? "Hide advanced" : "Advanced"}</Text>
+              </Pressable>
+              {showAdvanced && (
+                <View>
+                  <Label>Out of scope</Label>
+                  <Input
+                    value={listToCsv(draft.scope.outOfScope)}
+                    onChangeText={(v) =>
+                      setDraft({ ...draft, scope: { ...draft.scope, outOfScope: csvToList(v) } })
+                    }
+                  />
+                  <Label>Skip patterns</Label>
+                  <Input
+                    multiline
+                    value={listToCsv(draft.scope.skipPatterns)}
+                    onChangeText={(v) =>
+                      setDraft({ ...draft, scope: { ...draft.scope, skipPatterns: csvToList(v) } })
+                    }
+                  />
+                  <Label>Max outreach / run</Label>
+                  <Input
+                    keyboardType="number-pad"
+                    value={String(draft.scope.maxOutreach)}
+                    onChangeText={(v) =>
+                      setDraft({
+                        ...draft,
+                        scope: { ...draft.scope, maxOutreach: Number(v) || 3 },
+                      })
+                    }
+                  />
+                </View>
+              )}
             </View>
           )}
 
           {step === 2 && (
             <View>
-              <Text style={styles.h}>Platforms to target</Text>
-              {(Object.keys(META) as PlatformType[]).map((p) => {
-                const on = draft.platforms.includes(p);
-                return (
-                  <Pressable
-                    key={p}
-                    onPress={() => {
-                      const platforms = on
-                        ? draft.platforms.filter((x) => x !== p)
-                        : Array.from(new Set([...draft.platforms, p]));
-                      setDraft({ ...draft, platforms });
-                    }}
-                    style={[styles.plat, on && styles.platOn]}
-                  >
-                    <Text style={styles.platTitle}>
-                      {on ? "✓ " : ""}
-                      {META[p].label}
-                    </Text>
-                    <Text style={styles.platBlurb}>{META[p].blurb}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-
-          {step === 3 && (
-            <View>
-              <Text style={styles.h}>Connect accounts</Text>
-              <Sub>DEMO_MODE mocks success. Real OAuth is a stub for later.</Sub>
-              {draft.platforms.map((p) => {
-                const isOn = connected.has(p);
-                const conn = draft.connections.find((c) => c.type === p);
-                return (
-                  <View key={p} style={styles.connectRow}>
-                    <View style={{ flex: 1, marginBottom: 8 }}>
-                      <Text style={styles.platTitle}>{META[p].label}</Text>
-                      <Text style={styles.platBlurb}>
-                        {isOn ? `${conn?.identityName} · ${conn?.status}` : "Not connected"}
-                      </Text>
-                      {p === "facebook" && (
-                        <Text style={{ color: colors.warn, fontSize: 11, marginTop: 4 }}>
-                          Secure Page session / agent playbook — not unpaid Meta scraping API.
-                        </Text>
-                      )}
-                    </View>
-                    <Btn
-                      title={isOn ? "Reconnect" : "Connect"}
-                      variant={isOn ? "secondary" : "primary"}
-                      onPress={() => onConnect(p)}
-                      disabled={saving}
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {step === 4 && (
-            <View>
-              <Text style={styles.h}>Review & go live</Text>
-              <Text style={styles.review}>Business: {draft.business.businessName || "—"}</Text>
-              <Text style={styles.review}>
-                Scope: {draft.scope.inScope.slice(0, 4).join(", ") || "—"}
+              <Text style={styles.platTitle}>Facebook</Text>
+              <Text style={styles.platBlurb}>
+                Connect your Page. An agent worker watches groups and drafts unique comments — not
+                Meta’s unpaid group API.
               </Text>
-              <Text style={styles.review}>
-                Area: {draft.scope.serviceArea.join(", ") || "—"}
-              </Text>
-              <Text style={styles.review}>Platforms: {draft.platforms.join(", ") || "—"}</Text>
-              <Text style={styles.review}>
-                Connected: {draft.connections.filter((c) => c.connected).length}
-              </Text>
-              <Sub>
-                Going live exports tenant config to the optional API (if running) and sets watcher
-                → Watching.
-              </Sub>
               <Btn
-                title={saving ? "Going live…" : "Go live"}
-                onPress={onGoLive}
+                title={fbConnected ? "Connected · Continue" : "Connect Facebook"}
+                onPress={fbConnected ? onGoLive : onConnectFb}
                 disabled={saving}
               />
+              {fbConnected && (
+                <Btn title="Reconnect" variant="ghost" onPress={onConnectFb} disabled={saving} />
+              )}
+
+              <Text style={[styles.platTitle, { marginTop: 28 }]}>Later</Text>
+              {(["nextdoor", "craigslist", "reddit"] as const).map((p) => (
+                <View key={p} style={styles.laterRow}>
+                  <Text style={{ color: colors.muted, textTransform: "capitalize" }}>{p}</Text>
+                  <Text style={{ color: colors.faint, fontSize: 12 }}>Not smart yet</Text>
+                </View>
+              ))}
+
+              {fbConnected && (
+                <Btn
+                  title={saving ? "Going live…" : "Go live"}
+                  onPress={onGoLive}
+                  disabled={saving}
+                />
+              )}
             </View>
           )}
 
-          {!!msg && <Text style={{ color: colors.accent2, marginTop: 12 }}>{msg}</Text>}
+          {!!msg && <Text style={{ color: colors.ok, marginTop: 12, fontSize: 13 }}>{msg}</Text>}
         </Card>
 
         <View style={styles.navRow}>
-          <Btn title="Back" variant="ghost" onPress={back} disabled={step === 0 || saving} />
+          {step > 0 && (
+            <Btn title="Back" variant="ghost" onPress={back} disabled={saving} />
+          )}
           {step < STEPS.length - 1 && (
-            <Btn title="Save & continue" onPress={next} disabled={saving} />
+            <Btn title="Continue" onPress={next} disabled={saving} />
           )}
         </View>
       </ScrollView>
@@ -315,43 +287,19 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  stepRow: { flexDirection: "row", flexWrap: "wrap", marginVertical: 12 },
-  h: { color: colors.text, fontSize: 18, fontWeight: "700", marginBottom: 4 },
-  plat: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 10,
+  stepMeta: { color: colors.faint, fontSize: 12, fontWeight: "500", marginBottom: 8 },
+  progress: { flexDirection: "row", gap: 6, marginTop: space.md },
+  bar: { flex: 1, height: 3, borderRadius: 2, backgroundColor: colors.border },
+  barOn: { backgroundColor: colors.accent },
+  advToggle: { color: colors.accent, fontSize: 13, fontWeight: "500" },
+  platTitle: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  platBlurb: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 6, marginBottom: 8 },
+  laterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  platOn: {
-    borderColor: "rgba(59,130,246,0.5)",
-    backgroundColor: "rgba(59,130,246,0.12)",
-  },
-  platTitle: { color: colors.text, fontWeight: "600" },
-  platBlurb: { color: colors.muted, fontSize: 12, marginTop: 4 },
-  connectRow: {
-    marginTop: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  previewBox: {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(2,6,23,0.45)",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  previewLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    textTransform: "uppercase",
-    marginBottom: 8,
-    fontWeight: "600",
-  },
-  previewOut: { color: "#a5f3fc", fontSize: 12, marginTop: 10, fontFamily: "monospace" },
-  review: { color: colors.text, marginTop: 8, fontSize: 14 },
-  navRow: { marginTop: 8 },
+  navRow: { marginTop: space.md },
 });

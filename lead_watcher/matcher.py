@@ -39,6 +39,8 @@ def _request_signals(text: str) -> int:
         r"\bcontractor\b",
         r"\bhelp (with|me|us)\b",
         r"\bwho (can|does|is)\b",
+        r"\bwho (should|would) (i|we)\b",
+        r"\breferrals?\b",
     ]
     score = 0
     for pat in signals:

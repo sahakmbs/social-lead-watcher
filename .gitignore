@@ -28,3 +28,23 @@ data/handled.jsonl
 
 # Playwright / browsers
 .playwright/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+apps/*/node_modules/
+apps/*/.expo/
+apps/mobile/.env
+apps/web/.next/
+
+# Tenant runtime exports
+tenants/*/business.yaml
+!tenants/.gitkeep
+
+# Local demo DB / stores
+apps/web/data/store.json
+*.sqlite
+apps/web/
+apps/mobile/.env
